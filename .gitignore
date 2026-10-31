@@ -1,0 +1,25 @@
+# Executables and intermediates from `goose build` (it writes them beside the source)
+*.exe
+*.obj
+*.o
+*.pdb
+*.ilk
+*.lib
+*.a
+*.dSYM/
+test/test_random
+test/dump
+examples/plummer
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Scratch, benchmark outputs and builds
+scratch/
+bench/*.csv
+bench/log_*.txt
+bench/rust/target*/
+bench/rust/Cargo.lock

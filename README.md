@@ -150,8 +150,10 @@ value). Each stream starts 2^128 outputs after the last, so they never overlap.
 | Pinning | Every run on logical CPU 4, a performance core (`bench/run_pinned.ps1`) |
 
 Each case fills an array of 2^20 values. The time is the best of at least five fills and 0.2 s,
-in nanoseconds per value, single-threaded. The fastest time in each row and any within 3% of it
+in nanoseconds per value, single-threaded. `tools/plot_bench.py` draws the plot from the CSVs. The fastest time in each row and any within 3% of it
 are in bold.
+
+![goose-random against NumPy, Rust and C++](docs/benchmark.png)
 
 | Case | Goose | NumPy | Rust | Rust, native | C++ |
 |---|---|---|---|---|---|

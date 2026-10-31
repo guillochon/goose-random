@@ -6,7 +6,7 @@ nothing to install. Fast generators, 30-odd distributions with exact algorithms,
 sampling, and non-overlapping streams for threads.
 
 ```goose
-import random from "guillochon/goose-random@main";   // or from "../goose-random" for a local checkout
+import random from "guillochon/goose-random@v0.1.0";   // or from "../goose-random" for a local checkout
 
 fn main() {
     var g = random::seed(42);
@@ -20,9 +20,9 @@ fn main() {
 }
 ```
 
-Goose fetches the package the first time a program uses it. There is no tagged release yet: pin a
-commit (`"guillochon/goose-random@<commit>"`) for a reproducible build, since a branch like
-`@main` is pinned at whatever was fetched first, until `goose fetch --update`.
+Goose fetches the package the first time a program uses it. `@v0.1.0` is the current release;
+`@main` follows development. A tag can move, so for a build that must be reproducible, pin a
+commit (`"guillochon/goose-random@<commit>"`).
 
 ## Conventions
 

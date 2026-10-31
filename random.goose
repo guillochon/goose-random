@@ -251,22 +251,33 @@ inline fn mul_wide(a: u64, b: u64) -> u64, u64 {
 // Exactly uniform in [0, n) for n > 0 (Lemire, 2019): the high word of a
 // random multiple of n, drawn again in the rare case the low word lands in
 // the 2^64 mod n values that would favor some results. Below 2^32 this
-// needs only a 64-bit multiply of the top 32 bits.
-fn below_u64<G>(g: G&, n: u64) -> u64 {
+// needs only a 64-bit multiply of the top 32 bits. The common path is
+// inline; the rejection step, reached with probability below n / 2^32 (or
+// n / 2^64), is not.
+inline fn below_u64<G>(g: G&, n: u64) -> u64 {
     assert(n > 0);
     if n <= 0xFFFFFFFF {
-        var m = (next_u64(g) >> 32) * n;
-        if (m & 0xFFFFFFFF) < n {
-            let t = (0x100000000 - n) % n;      // 2^32 mod n
-            while (m & 0xFFFFFFFF) < t { m = (next_u64(g) >> 32) * n; }
-        }
-        return m >> 32;
+        let m = (next_u64(g) >> 32) * n;
+        if (m & 0xFFFFFFFF) >= n { return m >> 32; }
+        return below_u32_reject(g, n, m);
     }
-    var hi, lo = mul_wide(next_u64(g), n);
-    if lo < n {
-        let t = (~n + 1) % n;                   // 2^64 mod n
-        while lo < t { hi, lo = mul_wide(next_u64(g), n); }
-    }
+    let hi, lo = mul_wide(next_u64(g), n);
+    if lo >= n { return hi; }
+    return below_u64_reject(g, n, hi, lo);
+}
+
+fn below_u32_reject<G>(g: G&, n: u64, m0: u64) -> u64 {
+    var m = m0;
+    let t = (0x100000000 - n) % n;              // 2^32 mod n
+    while (m & 0xFFFFFFFF) < t { m = (next_u64(g) >> 32) * n; }
+    return m >> 32;
+}
+
+fn below_u64_reject<G>(g: G&, n: u64, hi0: u64, lo0: u64) -> u64 {
+    var hi = hi0;
+    var lo = lo0;
+    let t = (~n + 1) % n;                       // 2^64 mod n
+    while lo < t { hi, lo = mul_wide(next_u64(g), n); }
     return hi;
 }
 
@@ -597,11 +608,22 @@ fn von_mises<G>(g: G&, mu: f64, kappa: f64) -> f64 {
 // Poisson with mean lam >= 0. Below 10, inversion by sequential search
 // from 0; from 10, Hormann's transformed rejection (PTRS, 1993), whose
 // expected cost does not grow with lam.
-fn poisson<G>(g: G&, lam: f64) -> i64 {
+//
+// The setup that depends only on lam is inline and the sampling loops are
+// not, so in a loop with a fixed lam the C compiler can hoist the setup out
+// of it, as a distribution object would.
+inline fn poisson<G>(g: G&, lam: f64) -> i64 {
     assert(lam >= 0.0 && lam < 1e18);
-    if lam >= 10.0 { return poisson_ptrs(g, lam); }
+    if lam >= 10.0 {
+        let b = 0.931 + 2.53 * sqrt(lam);
+        return poisson_ptrs(g, lam, log(lam), b, -0.059 + 0.02483 * b,
+                            1.1239 + 1.1328 / (b - 3.4), 0.9277 - 3.6224 / (b - 2.0));
+    }
     if lam == 0.0 { return 0; }
-    let p0 = exp(-lam);
+    return poisson_inversion(g, lam, exp(-lam));
+}
+
+fn poisson_inversion<G>(g: G&, lam: f64, p0: f64) -> i64 {
     loop {
         var u = uniform(g);
         var p = p0;
@@ -609,29 +631,28 @@ fn poisson<G>(g: G&, lam: f64) -> i64 {
         while u >= p {
             u -= p;
             k++;
-            p *= lam / k;
             if k > 120 { break; }   // the rounding of the remainder; at most 1e-100 of the mass
+            p *= lam * RECIP[k];
         }
         if k <= 120 { return k; }
     }
 }
 
-fn poisson_ptrs<G>(g: G&, lam: f64) -> i64 {
-    let slam = sqrt(lam);
-    let loglam = log(lam);
-    let b = 0.931 + 2.53 * slam;
-    let a = -0.059 + 0.02483 * b;
-    let inv_alpha = 1.1239 + 1.1328 / (b - 3.4);
-    let vr = 0.9277 - 3.6224 / (b - 2.0);
+fn poisson_ptrs<G>(g: G&, lam: f64, loglam: f64, b: f64, a: f64, inv_alpha: f64, vr: f64) -> i64 {
     loop {
         let u = uniform(g) - 0.5;
         let v = uniform_pos(g);
         let us = 0.5 - abs(u);
-        let kf = floor((2.0 * a / us + b) * u + lam + 0.43);
-        if us >= 0.07 && v <= vr { return kf as i64; }
-        if kf < 0.0 || (us < 0.013 && v > us) { continue; }
-        let k = kf as i64;
-        if log(v) + log(inv_alpha) - log(a / (us * us) + b) <= -lam + k * loglam - log_factorial(k) {
+        // floor(x) as an integer. Below 0 there is no mass; at 2^62 and
+        // beyond, far past lam < 1e18, none a double can show. In between, a
+        // truncating conversion is the floor in one instruction, where floor
+        // itself is a library call on baseline x86-64.
+        let x = (2.0 * a / us + b) * u + lam + 0.43;
+        if x < 0.0 || x >= 4.6e18 { continue; }
+        let k = x as! i64;
+        if us >= 0.07 && v <= vr { return k; }
+        if us < 0.013 && v > us { continue; }
+        if log(v * inv_alpha / (a / (us * us) + b)) <= -lam + k * loglam - log_factorial(k) {
             return k;
         }
     }
@@ -639,17 +660,26 @@ fn poisson_ptrs<G>(g: G&, lam: f64) -> i64 {
 
 // Binomial: successes in n trials of probability p. Inversion when
 // n min(p, 1 - p) < 10; Hormann's BTRS (1993) above, with exact
-// log-factorials in its final test.
-fn binomial<G>(g: G&, n: i64, p: f64) -> i64 {
+// log-factorials in its final test. As for poisson, the inversion's setup is
+// inline so that a loop with fixed parameters can hoist it.
+inline fn binomial<G>(g: G&, n: i64, p: f64) -> i64 {
     assert(n >= 0 && p >= 0.0 && p <= 1.0);
     if n == 0 || p == 0.0 { return 0; }
     if p == 1.0 { return n; }
-    if p > 0.5 { return n - binomial_lower(g, n, 1.0 - p); }
-    return binomial_lower(g, n, p);
+    let pl = if p > 0.5 { 1.0 - p } else { p };
+    var k = 0;
+    if n * pl < 10.0 {
+        let np = n * pl;
+        let q = 1.0 - pl;
+        k = binomial_inversion(g, n, exp(n * log1p(-pl)), pl / q,
+                               min(n as f64, np + 10.0 * sqrt(np * q + 1.0)));
+    } else {
+        k = binomial_btrs(g, n, pl);
+    }
+    return if p > 0.5 { n - k } else { k };
 }
 
-fn binomial_lower<G>(g: G&, n: i64, p: f64) -> i64 {
-    if n * p < 10.0 { return binomial_inversion(g, n, p); }
+fn binomial_btrs<G>(g: G&, n: i64, p: f64) -> i64 {
     let q = 1.0 - p;
     let spq = sqrt(n * p * q);
     let b = 1.15 + 2.53 * spq;
@@ -664,22 +694,19 @@ fn binomial_lower<G>(g: G&, n: i64, p: f64) -> i64 {
         let u = uniform(g) - 0.5;
         var v = uniform_pos(g);
         let us = 0.5 - abs(u);
-        let kf = floor((2.0 * a / us + b) * u + c);
-        if kf < 0.0 || kf > n { continue; }
-        let k = kf as i64;
+        let x = (2.0 * a / us + b) * u + c;
+        if x < 0.0 || x >= n + 1 { continue; }  // floor(x) outside [0, n]
+        let k = x as! i64;                      // floor(x), x being >= 0
         if us >= 0.07 && v <= vr { return k; }
         v = log(v * alpha / (a / (us * us) + b));
         if v <= h - log_factorial(k) - log_factorial(n - k) + (k - m) * lpq { return k; }
     }
 }
 
-// Sequential search from 0, with the probabilities by recurrence.
-fn binomial_inversion<G>(g: G&, n: i64, p: f64) -> i64 {
-    let q = 1.0 - p;
-    let p0 = exp(n * log1p(-p));
-    let np = n * p;
-    let bound = min(n as f64, np + 10.0 * sqrt(np * q + 1.0));
-    let r = p / q;
+// Sequential search from 0, with the probabilities by recurrence: p0 is
+// q^n, r is p / q, and the search gives up past bound (at most 44, n p
+// being below 10), where the remaining mass is negligible.
+fn binomial_inversion<G>(g: G&, n: i64, p0: f64, r: f64, bound: f64) -> i64 {
     loop {
         var u = uniform(g);
         var px = p0;
@@ -688,7 +715,7 @@ fn binomial_inversion<G>(g: G&, n: i64, p: f64) -> i64 {
             u -= px;
             k++;
             if k > bound { break; }
-            px *= r * (n - k + 1) / k;
+            px *= r * (n - k + 1) * RECIP[k];
         }
         if k <= bound { return k; }
     }
@@ -993,12 +1020,14 @@ fn dirichlet<G>(g: G&, alpha: f64[:], out: f64[:]) {
 
 // Fisher-Yates, with exactly uniform indices.
 fn shuffle<G, T>(g: G&, xs: T[:]) {
+    var h = g;
     var i = xs.len - 1;
     while i > 0 {
-        let j = below(g, i + 1);
+        let j = below(h, i + 1);
         swap_at(xs, i, j);
         i -= 1;
     }
+    g = h;
 }
 
 // A random permutation of 0..n.
@@ -1046,17 +1075,25 @@ fn sample_indices<G>(g: G&, n: i64, k: i64) -> i64[>..] {
 // Filling arrays
 
 fn fill_u64<G>(g: G&, out: u64[:]) {
-    for i in 0..out.len { out[i] = next_u64(g); }
+    var h = g;
+    for i in 0..out.len { out[i] = next_u64(h); }
+    g = h;
 }
 
 fn fill_uniform<G>(g: G&, out: f64[:]) {
-    for i in 0..out.len { out[i] = uniform(g); }
+    var h = g;
+    for i in 0..out.len { out[i] = uniform(h); }
+    g = h;
 }
 
 fn fill_normal<G>(g: G&, out: f64[:]) {
-    for i in 0..out.len { out[i] = normal(g); }
+    var h = g;
+    for i in 0..out.len { out[i] = normal(h); }
+    g = h;
 }
 
 fn fill_exponential<G>(g: G&, out: f64[:]) {
-    for i in 0..out.len { out[i] = exponential(g); }
+    var h = g;
+    for i in 0..out.len { out[i] = exponential(h); }
+    g = h;
 }

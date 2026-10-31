@@ -150,53 +150,67 @@ value). Each stream starts 2^128 outputs after the last, so they never overlap.
 | Pinning | Every run on logical CPU 4, a performance core (`bench/run_pinned.ps1`) |
 
 Each case fills an array of 2^20 values. The time is the best of at least five fills and 0.2 s,
-in nanoseconds per value, single-threaded. `tools/plot_bench.py` draws the plot from the CSVs. The fastest time in each row and any within 3% of it
-are in bold.
+in nanoseconds per value, single-threaded. The fastest time in each row and any within 3% of it
+are in bold. `tools/plot_bench.py` draws the plot from the CSVs.
 
 ![goose-random against NumPy, Rust and C++](docs/benchmark.png)
 
 | Case | Goose | NumPy | Rust | Rust, native | C++ |
 |---|---|---|---|---|---|
-| raw 64-bit output¹ | 0.84 | 2.17 | **0.73** | **0.74** | 1.12 |
-| `uniform` | 0.95 | 1.39 | **0.88** | **0.89** | 1.27 |
-| `normal` | **1.53** | 6.43 | 1.65 | **1.57** | 6.95 |
-| `exponential` | **1.55** | 2.30 | 1.75 | 1.81 | 5.61 |
-| `below(g, 1000)` | 1.06 | 2.56 | 0.95 | **0.89** | 1.47 |
-| `below(g, 3e18)` | **1.81** | 4.66 | 1.97 | **1.83** | 3.27 |
-| `uniform_dense` | **7.04** | — | — | — | — |
-| `gamma`, shape 0.5 | **6.19** | 33.7 | 8.81 | 7.91 | 42.3 |
-| `gamma`, shape 3 | 4.79 | 13.1 | 6.54 | **4.55** | 13.8 |
-| `beta(2, 5)` | **9.84** | 28.4 | 56.2 | 52.2 | — |
-| `beta(0.5, 0.5)` | **6.11** | 47.6 | 62.7 | 55.0 | — |
-| `chi_squared(5)` | 4.97 | 14.2 | 5.00 | **4.78** | 77.0 |
-| `student_t(5)` | **6.46** | 23.3 | 6.82 | **6.34** | 21.0 |
-| `lognormal` | **4.59** | 11.8 | 9.38 | 8.88 | 20.6 |
-| `cauchy` | **2.84** | 16.8 | 11.6 | 10.8 | 12.4 |
+| raw 64-bit output¹ | **0.73** | 2.17 | **0.73** | **0.74** | 1.12 |
+| `uniform` | **0.86** | 1.39 | **0.88** | 0.89 | 1.27 |
+| `normal` | **1.38** | 6.43 | 1.65 | 1.57 | 6.95 |
+| `exponential` | **1.39** | 2.30 | 1.75 | 1.81 | 5.61 |
+| `below(g, 1000)` | **0.90** | 2.56 | 0.95 | **0.89** | 1.47 |
+| `below(g, 3e18)` | **1.75** | 4.66 | 1.97 | 1.83 | 3.27 |
+| `uniform_dense` | **7.09** | — | — | — | — |
+| `gamma`, shape 0.5 | **6.24** | 33.7 | 8.81 | 7.91 | 42.3 |
+| `gamma`, shape 3 | 4.78 | 13.1 | 6.54 | **4.55** | 13.8 |
+| `beta(2, 5)` | **9.68** | 28.4 | 56.2 | 52.2 | — |
+| `beta(0.5, 0.5)` | **6.01** | 47.6 | 62.7 | 55.0 | — |
+| `chi_squared(5)` | **4.90** | 14.2 | 5.00 | **4.78** | 77.0 |
+| `student_t(5)` | **6.38** | 23.3 | 6.82 | **6.34** | 21.0 |
+| `lognormal` | **4.65** | 11.8 | 9.38 | 8.88 | 20.6 |
+| `cauchy` | **2.83** | 16.8 | 11.6 | 10.8 | 12.4 |
 | `weibull(1.5)` | **9.14** | 17.6 | 57.7 | 52.7 | 16.7 |
-| `von_mises(κ = 4)` | **31.4** | 48.3 | — | — | — |
-| `poisson(3)`² | 14.1 | 23.3 | **12.7** | **12.5** | 22.7 |
-| `poisson(1000)` | 10.9 | 21.3 | 9.47 | **8.95** | 87.6 |
-| `binomial(20, 0.3)`² | 26.1 | 34.2 | **18.1** | **17.7** | 57.5 |
-| `binomial(1000, 0.3)` | **14.6** | 29.4 | 21.4 | 19.9 | 150.2 |
-| `geometric(0.01)` | **2.60** | 11.8 | 56.6 | 51.3 | 5.74 |
+| `von_mises(κ = 4)` | **31.9** | 48.3 | — | — | — |
+| `poisson(3)` | **10.5** | 23.3 | 12.7 | 12.5 | 22.7 |
+| `poisson(1000)` | 10.0 | 21.3 | 9.47 | **8.95** | 87.6 |
+| `binomial(20, 0.3)` | **14.7** | 34.2 | 18.1 | 17.7 | 57.5 |
+| `binomial(1000, 0.3)` | **14.1** | 29.4 | 21.4 | 19.9 | 150.2 |
+| `geometric(0.01)` | **2.61** | 11.8 | 56.6 | 51.3 | 5.74 |
 | `hypergeometric(500, 500, 200)` | **29.6** | 68.5 | 39.7 | 36.5 | — |
-| alias table, 6 outcomes | 4.70 | 13.4 | 4.92 | **4.48** | 12.6 |
-| `shuffle`, per element | 2.45 | 12.1 | 6.44 | **2.34** | 4.93 |
+| alias table, 6 outcomes | 4.63 | 13.4 | 4.92 | **4.48** | 12.6 |
+| `shuffle`, per element² | 3.71 | 12.1 | 6.44 | **2.34** | 4.93 |
 
 ¹ Each library's default generator: xoshiro256++ for Goose and Rust, PCG64 for NumPy, and
-mt19937_64 for C++. Goose's xoshiro256** takes 0.75 ns and sfc64 0.98 ns. NumPy's SFC64 is
+mt19937_64 for C++. Goose's xoshiro256** takes 0.67 ns and sfc64 0.89 ns. NumPy's SFC64 is
 between 0 and 25% faster than its PCG64 in these cases.
 
-² Goose's samplers take their parameters on every call, so each draw pays for the setup that
-depends on them: for these two, an `exp`, a `log` and a `sqrt`. Rust builds a distribution object
-once (`Binomial::new(20, 0.3)`) and keeps that setup out of the timed loop.
+² A shuffle of 2^20 elements swaps at random across 8 MB, so it's bound by memory, and its time
+moves between about 1.8 and 3.7 ns from one run to the next with where the array lands.
 
 The big gaps against `rand_distr` and NumPy come from algorithms, not code generation. Goose's
 Cauchy is a ratio of two ziggurat normals rather than a `tan`, its Weibull and geometric are
 transforms of a ziggurat exponential, its beta for small parameters is Jöhnk's method, and its
 gamma for shape below 1 uses a single `pow`.
 
-`/arch:AVX2` doesn't help overall. It halves splitmix64 (0.42 ns), and most cases move by under
-5%, but the samplers that lean on the C library's `pow`, `log` and `cos` get slower: Weibull
-22 ns, von Mises 48 ns, `binomial(1000, 0.3)` 19.5 ns, `poisson(1000)` 12.6 ns, and the normal
-1.73 ns. The plain build is the one to use.
+Rust's `poisson(1000)` is the one case still ahead, by 6%. Both use Hörmann's PTRS with the same
+C library `log`, and the rest of the difference isn't accounted for yet.
+
+### Writing fast loops
+
+- Goose's samplers take their parameters on every call, where Rust builds a distribution object
+  (`Poisson::new(3.0)`) once. For `poisson` and `binomial`, the setup that depends only on the
+  parameters is inline and the sampling loop is not, so in a loop whose parameters don't change
+  the C compiler can hoist the setup out of it, as if there were an object (`poisson(3)` in such a
+  loop, with λ known only at run time, went from 20.8 to 13.3 ns).
+- Keep the generator in a local `var` of the function with the hot loop. A generator reached
+  through a reference (a `G&` parameter) stays in memory, where the compiler loads and stores its
+  state on every draw: about 0.1–0.3 ns more per value, and more variable. The `fill_` functions
+  and `shuffle` copy the generator into a local and back for this reason.
+
+`/arch:AVX2` doesn't help overall. It halves splitmix64 (0.85 to 0.41 ns), and most cases
+move by under 5%, but the samplers that lean on the C library's `pow`, `log` and `cos` get slower:
+Weibull 22 ns, von Mises 48 ns, `binomial(1000, 0.3)` 19.8 ns and `poisson(1000)`
+12.7 ns. The plain build is the one to use.

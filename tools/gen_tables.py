@@ -99,6 +99,11 @@ def main():
     print('// log(k!) for k < 128.')
     emit('LOG_FACT', 'f64', [dbl(mp.log(mp.factorial(k))) for k in range(128)], 4)
 
+    # 1 / k, for the inversion samplers' recurrences (k = 0 is unused).
+    print('// 1 / k for k < 128, the term of the Poisson and binomial recurrences;')
+    print('// RECIP[0] is unused.')
+    emit('RECIP', 'f64', ['0.0'] + [dbl(mp.mpf(1) / k) for k in range(1, 128)], 4)
+
     # Stirling's correction log(k!) - [(k + 1/2) log(k + 1) - (k + 1) + log(2 pi)/2],
     # which BTRS (Hormann 1993) uses for k < 10.
     fc = []

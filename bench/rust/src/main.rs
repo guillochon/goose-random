@@ -10,7 +10,7 @@ use rand::seq::SliceRandom;
 use rand::{Rng, RngCore, SeedableRng};
 use rand_distr::{
     Beta, Binomial, Cauchy, ChiSquared, Distribution, Exp1, Gamma, Geometric, Hypergeometric,
-    LogNormal, Poisson, StandardNormal, StudentT, VonMises, Weibull, weighted::WeightedAliasIndex,
+    LogNormal, Poisson, StandardNormal, StudentT, Weibull, weighted::WeightedAliasIndex,
 };
 use rand_xoshiro::Xoshiro256PlusPlus;
 use std::hint::black_box;
@@ -95,7 +95,6 @@ fn main() {
     floats(l, &mut g, &mut f, "lognormal", LogNormal::new(0.0, 1.0).unwrap());
     floats(l, &mut g, &mut f, "cauchy", Cauchy::new(0.0, 1.0).unwrap());
     floats(l, &mut g, &mut f, "weibull 1.5", Weibull::new(1.0, 1.5).unwrap());
-    floats(l, &mut g, &mut f, "von_mises 4", VonMises::new(0.0, 4.0).unwrap());
     floats(l, &mut g, &mut f, "poisson 3", Poisson::new(3.0).unwrap());
     floats(l, &mut g, &mut f, "poisson 1000", Poisson::new(1000.0).unwrap());
     ints(l, &mut g, &mut u, "binomial 20 0.3", Binomial::new(20, 0.3).unwrap());

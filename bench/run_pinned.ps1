@@ -45,7 +45,7 @@ if ($Only -eq "" -or $Only -eq "rust") {
         $env:RUSTFLAGS = if ($cfg -eq "native") { "-C target-cpu=native" } else { "" }
         $env:CARGO_TARGET_DIR = "$here\rust\target_$cfg"
         cargo build --release --manifest-path "$here\rust\Cargo.toml" 2>&1 | Out-Null
-        Remove-Item Env:RUSTFLAGS, Env:CARGO_TARGET_DIR
+        Remove-Item Env:RUSTFLAGS, Env:CARGO_TARGET_DIR -ErrorAction SilentlyContinue
         $exe = "$here\rust\target_$cfg\release\bench_rand.exe"
         if (-not (Test-Path $exe)) { throw "building the Rust benchmark failed" }
         Run-Pinned $exe @("..\bench_rust_$cfg.csv") "$here\log_rust_$cfg.txt" "$here\rust"
@@ -55,7 +55,14 @@ if ($Only -eq "" -or $Only -eq "rust") {
 if ($Only -eq "" -or $Only -eq "cpp") {
     Push-Location $here
     Remove-Item bench_cpp.exe -ErrorAction SilentlyContinue
-    clang-cl /nologo /O2 /arch:AVX2 /EHsc bench_cpp.cpp /Fe:bench_cpp.exe | Out-Null
+    $cc = "clang-cl /nologo /O2 /arch:AVX2 /EHsc /D_CRT_SECURE_NO_WARNINGS bench_cpp.cpp /Fe:bench_cpp.exe"
+    if (Get-Command clang-cl -ErrorAction SilentlyContinue) {
+        Invoke-Expression $cc | Out-Null
+    } else {
+        # Outside a developer prompt: borrow Visual Studio's environment.
+        $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+        cmd /c "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" >nul && $cc" | Out-Null
+    }
     Pop-Location
     if (-not (Test-Path "$here\bench_cpp.exe")) { throw "building bench_cpp.cpp failed" }
     Run-Pinned "$here\bench_cpp.exe" @("bench_cpp.csv") "$here\log_cpp.txt"

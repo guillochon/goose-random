@@ -290,6 +290,11 @@ inline fn bernoulli<G>(g: G&, p: f64) -> bool { uniform(g) < p }
 // A fair coin: the top bit.
 inline fn coin<G>(g: G&) -> bool { (next_u64(g) >> 63) != 0 }
 
+// +1 or -1, each with probability 1/2, by a lookup rather than a branch that
+// mispredicts half the time.
+let SIGN: f64[2] = [1.0, -1.0];
+inline fn sign<G>(g: G&) -> f64 { SIGN[(next_u64(g) >> 63) as! i64] }
+
 // ---------------------------------------------------------------------------
 // Special functions the samplers need, accurate to a few units in the last
 // place.
@@ -336,7 +341,6 @@ fn normal<G>(g: G&) -> f64 {
     loop {
         let r = next_u64(g);
         let i = (r & 255) as! i64;
-        let neg = (r & 256) != 0;
         let m = r >> 12;                    // 52 bits, independent of i and the sign
         var x = (m as! i64) * ZIG_NORM_W[i];
         if m >= ZIG_NORM_K[i] {
@@ -346,7 +350,7 @@ fn normal<G>(g: G&) -> f64 {
                 continue;
             }
         }
-        return if neg { -x } else { x };
+        return x * SIGN[((r >> 8) & 1) as! i64];
     }
 }
 
@@ -393,7 +397,13 @@ fn gamma<G>(g: G&, shape: f64) -> f64 {
     if shape == 1.0 { return exponential(g); }
     if shape == 0.0 { return 0.0; }
     if shape < 1.0 {
-        return exp(log(gamma_mt(g, shape + 1.0)) + log(uniform_pos(g)) / shape);
+        // Gamma(shape + 1) times U^(1/shape). pow is one call and correctly
+        // rounded to within an ulp; only where it underflows does the product
+        // go through logs.
+        let y = gamma_mt(g, shape + 1.0);
+        let u = uniform_pos(g);
+        let p = pow(u, 1.0 / shape);
+        return if p > 1.0e-290 { y * p } else { exp(log(y) + log(u) / shape) };
     }
     return gamma_mt(g, shape);
 }
@@ -477,7 +487,7 @@ fn cauchy<G>(g: G&, loc: f64, scale: f64) -> f64 {
 // Laplace (double exponential) with the given location and scale.
 fn laplace<G>(g: G&, loc: f64, scale: f64) -> f64 {
     let e = exponential(g);
-    return if coin(g) { loc + scale * e } else { loc - scale * e };
+    return loc + scale * e * sign(g);
 }
 
 // Logistic with the given location and scale: log(E1 / E2), which has the
@@ -573,7 +583,7 @@ fn von_mises<G>(g: G&, mu: f64, kappa: f64) -> f64 {
             if y * (2.0 - y) - v >= 0.0 || log(y / v) + 1.0 - y >= 0.0 { break; }
         }
         x = acos(max(-1.0, min(1.0, w)));
-        if coin(g) { x = -x; }
+        x *= sign(g);
         x += mu;
     }
     // Wrap into [-pi, pi).

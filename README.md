@@ -100,7 +100,8 @@ value). Each stream starts 2^128 outputs after the last, so they never overlap.
 - **Gamma** uses Marsaglia and Tsang's method. The log test is written as
   `3 log1p(t) − t(3 + t(3 + t))`, which keeps its precision for shapes up to 10⁸ and beyond, where
   the textbook `1 − v + log v` cancels. For shapes below 1 it draws shape + 1 and multiplies by
-  U^(1/shape) in logs, so a tiny shape underflows only where the true value does. **Beta** uses
+  U^(1/shape), one `pow`, switching to logs where that underflows, so a tiny shape underflows
+  only where the true value does. **Beta** uses
   Jöhnk's method in logs when both parameters are at most 1, and two gammas otherwise. **Dirichlet**
   works in log space, so tiny concentrations still give a point on the simplex.
 - **Poisson** uses inversion below a mean of 10 and Hörmann's transformed rejection (PTRS) above,
@@ -136,7 +137,64 @@ value). Each stream starts 2^128 outputs after the last, so they never overlap.
 
 ## Performance
 
-*Benchmarks are pending.* `bench/` has the Goose benchmark and its counterparts for NumPy
-(`bench_numpy.py`), Rust's `rand` and `rand_distr` (`bench/rust`) and C++ `<random>`
-(`bench_cpp.cpp`), all timing the same cases by filling arrays of 2^20 values.
-`bench/run_pinned.ps1` builds and runs them all pinned to one core.
+### Test setup
+
+| | |
+|---|---|
+| CPU | Intel Core i5-12600K (Alder Lake): 6 performance cores, 3.7 GHz base, 4.9 GHz turbo |
+| OS | Windows 11 Home 23H2 (build 22631), High performance power plan |
+| Goose | built from aardappel/goose master (commit 2ed1a63d), compiling with clang-cl 22.1.3 (Visual Studio 2026); a plain `goose build` |
+| NumPy | 2.2.6 on Python 3.12, `Generator` with its default PCG64, filling arrays with `size=` |
+| Rust | rustc 1.88.0, `rand` 0.9.5, `rand_distr` 0.5.1 and `rand_xoshiro` 0.7.0's `Xoshiro256PlusPlus` (Goose's default generator), release build with LTO; "native" adds `-C target-cpu=native` |
+| C++ | `<random>` from Visual Studio's standard library with `mt19937_64`, clang-cl `/O2 /arch:AVX2` |
+| Pinning | Every run on logical CPU 4, a performance core (`bench/run_pinned.ps1`) |
+
+Each case fills an array of 2^20 values. The time is the best of at least five fills and 0.2 s,
+in nanoseconds per value, single-threaded. The fastest time in each row and any within 3% of it
+are in bold.
+
+| Case | Goose | NumPy | Rust | Rust, native | C++ |
+|---|---|---|---|---|---|
+| raw 64-bit output¹ | 0.84 | 2.17 | **0.73** | **0.74** | 1.12 |
+| `uniform` | 0.95 | 1.39 | **0.88** | **0.89** | 1.27 |
+| `normal` | **1.53** | 6.43 | 1.65 | **1.57** | 6.95 |
+| `exponential` | **1.55** | 2.30 | 1.75 | 1.81 | 5.61 |
+| `below(g, 1000)` | 1.06 | 2.56 | 0.95 | **0.89** | 1.47 |
+| `below(g, 3e18)` | **1.81** | 4.66 | 1.97 | **1.83** | 3.27 |
+| `uniform_dense` | **7.04** | — | — | — | — |
+| `gamma`, shape 0.5 | **6.19** | 33.7 | 8.81 | 7.91 | 42.3 |
+| `gamma`, shape 3 | 4.79 | 13.1 | 6.54 | **4.55** | 13.8 |
+| `beta(2, 5)` | **9.84** | 28.4 | 56.2 | 52.2 | — |
+| `beta(0.5, 0.5)` | **6.11** | 47.6 | 62.7 | 55.0 | — |
+| `chi_squared(5)` | 4.97 | 14.2 | 5.00 | **4.78** | 77.0 |
+| `student_t(5)` | **6.46** | 23.3 | 6.82 | **6.34** | 21.0 |
+| `lognormal` | **4.59** | 11.8 | 9.38 | 8.88 | 20.6 |
+| `cauchy` | **2.84** | 16.8 | 11.6 | 10.8 | 12.4 |
+| `weibull(1.5)` | **9.14** | 17.6 | 57.7 | 52.7 | 16.7 |
+| `von_mises(κ = 4)` | **31.4** | 48.3 | — | — | — |
+| `poisson(3)`² | 14.1 | 23.3 | **12.7** | **12.5** | 22.7 |
+| `poisson(1000)` | 10.9 | 21.3 | 9.47 | **8.95** | 87.6 |
+| `binomial(20, 0.3)`² | 26.1 | 34.2 | **18.1** | **17.7** | 57.5 |
+| `binomial(1000, 0.3)` | **14.6** | 29.4 | 21.4 | 19.9 | 150.2 |
+| `geometric(0.01)` | **2.60** | 11.8 | 56.6 | 51.3 | 5.74 |
+| `hypergeometric(500, 500, 200)` | **29.6** | 68.5 | 39.7 | 36.5 | — |
+| alias table, 6 outcomes | 4.70 | 13.4 | 4.92 | **4.48** | 12.6 |
+| `shuffle`, per element | 2.45 | 12.1 | 6.44 | **2.34** | 4.93 |
+
+¹ Each library's default generator: xoshiro256++ for Goose and Rust, PCG64 for NumPy, and
+mt19937_64 for C++. Goose's xoshiro256** takes 0.75 ns and sfc64 0.98 ns. NumPy's SFC64 is
+between 0 and 25% faster than its PCG64 in these cases.
+
+² Goose's samplers take their parameters on every call, so each draw pays for the setup that
+depends on them: for these two, an `exp`, a `log` and a `sqrt`. Rust builds a distribution object
+once (`Binomial::new(20, 0.3)`) and keeps that setup out of the timed loop.
+
+The big gaps against `rand_distr` and NumPy come from algorithms, not code generation. Goose's
+Cauchy is a ratio of two ziggurat normals rather than a `tan`, its Weibull and geometric are
+transforms of a ziggurat exponential, its beta for small parameters is Jöhnk's method, and its
+gamma for shape below 1 uses a single `pow`.
+
+`/arch:AVX2` doesn't help overall. It halves splitmix64 (0.42 ns), and most cases move by under
+5%, but the samplers that lean on the C library's `pow`, `log` and `cos` get slower: Weibull
+22 ns, von Mises 48 ns, `binomial(1000, 0.3)` 19.5 ns, `poisson(1000)` 12.6 ns, and the normal
+1.73 ns. The plain build is the one to use.

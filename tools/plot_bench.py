@@ -1,5 +1,6 @@
 """Draws docs/benchmark.png from the benchmark CSVs in bench/: nanoseconds
-per value for Goose, NumPy, Rust and C++, one row per case, on a log scale.
+per value for Goose, NumPy, Rust and C++, a row of thin bars per case, on a
+log scale.
 
     python tools/plot_bench.py
 """
@@ -81,17 +82,18 @@ def main():
     fig.patch.set_facecolor(SURFACE)
     ax.set_facecolor(SURFACE)
 
-    # Each case is a row; the series sit in four lanes within it, so that
-    # equal times don't hide one another.
-    lane = 0.16
-    for s, (label, _, _, color, marker) in enumerate(SERIES):
-        ys, xs = [], []
+    # Each case is a row of four thin bars, one per library, from the left
+    # edge of the axis, with a gap of surface between neighbours.
+    lane = 0.2
+    left = 0.5
+    for s, (label, _, _, color, _) in enumerate(SERIES):
+        ys, ws = [], []
         for i, (key, _) in enumerate(CASES):
             if key in data[s]:
                 ys.append(i + (s - 1.5) * lane)
-                xs.append(data[s][key])
-        ax.scatter(xs, ys, s=34, color=color, marker=marker, label=label, zorder=3,
-                   edgecolors=SURFACE, linewidths=1.0)
+                ws.append(data[s][key] - left)
+        ax.barh(ys, ws, left=left, height=lane, color=color, label=label, zorder=3,
+                edgecolor=SURFACE, linewidth=1.0)
 
     ax.set_xscale('log')
     ticks = [0.5, 1, 2, 5, 10, 20, 50, 100, 200]
@@ -115,12 +117,12 @@ def main():
     fig.suptitle('goose-random against NumPy, Rust and C++', x=0.02, ha='left',
                  color=TEXT, fontsize=13, fontweight='bold', y=0.985)
     fig.text(0.02, 0.945, 'Filling 2²⁰ values, single-threaded, pinned to one core of an i5-12600K. '
-             'Missing marks: no such sampler.', color=TEXT2, fontsize=8.5, ha='left')
+             'A missing bar: no such sampler.', color=TEXT2, fontsize=8.5, ha='left')
     leg = ax.legend(loc='lower left', bbox_to_anchor=(0.0, 1.0), ncol=4, frameon=False,
                     fontsize=9, handletextpad=0.3, columnspacing=1.4, borderaxespad=0.4)
     for t in leg.get_texts():
         t.set_color(TEXT)
-    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    fig.tight_layout(rect=(0, 0, 1, 0.965))
     os.makedirs(os.path.join(ROOT, 'docs'), exist_ok=True)
     path = os.path.join(ROOT, 'docs', 'benchmark.png')
     fig.savefig(path, facecolor=SURFACE)

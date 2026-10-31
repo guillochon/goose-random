@@ -32,6 +32,11 @@ commit (`"guillochon/goose-random@<commit>"`) for a reproducible build, since a 
 - Every distribution is **generic over the generator**, so it takes any of the generators below,
   std's own `rng`, or one of yours: declare `fn random::next_u64(g: mine&) -> u64` and they all
   work with it.
+- A generator is a plain struct, so Goose **copies** it into an untyped parameter or a block's
+  parameter. In a function or block of your own, pass it as `&g` (`F(&g)`, `step(&g)`), or
+  declare the parameter `g: G&`. Otherwise every call draws from the same copy and returns the
+  same numbers, silently. The `random::` functions all take `g: G&`, so calling them directly is
+  always safe.
 - Same seed, same numbers, on every platform and compiler: the generators are integer arithmetic,
   and the distributions use only correctly rounded operations and the C library's `exp`, `log`,
   `pow`, `sqrt`, `cos` and `acos` (whose last bit can differ between C libraries).
